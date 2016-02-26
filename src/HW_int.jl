@@ -11,11 +11,11 @@ module HW_int
 	using Distributions
 
 	# demand function
-	q(p) = 2*p.^-0.5
+	q(p) = 2*(p.^-0.5)
 
 	# gauss-legendre adjustment factors for map change
-	ba2(ub) = (ub-0)/2
-	ab(ub) = (0 + ub)/2
+	ba2(lb,ub) = (ub-lb)/2
+	ab2(lb,ub) = (lb+ub)/2
 
 	# eqm condition for question 2
 	# this is the equilibrium condition: total demand = supply, 
@@ -23,10 +23,14 @@ module HW_int
 	function dd(p,t1,t2)
 	    exp(t1)/p .+ exp(t2) .* p^-0.5 - 2
 	end
-	# this is the integration function
-	# it's the weighted sum from the slides.
-	function intfun(px,g::Matrix,w::Vector)
-		sum( w .* dd(px,g[:,1],g[:,2])) 
+
+	function fzero_wrap(f,lb,ub) 
+		try
+			fzero(f,lb,ub)
+		catch
+			println("no eqm price found")
+			return(NaN)
+		end
 	end
 
 	function question_1b(n)
@@ -34,33 +38,35 @@ module HW_int
 		gl = gausslegendre(n);
 
 		# bounds of integration
-		# a = 0
-		# b = pstar
+
+		# function to integrate:
+		# CS_4 = \int_0^4 q(p) dp - 4
+		# CS_1 = \int_0^1 q(p) dp - 2
+		# CS_4 - CS_1 = \int_0^4 q(p) dp - 4 - \int_0^1 q(p) dp + 2 
+		#             = \int_1^4 q(p) dp - 2 
+
+		# bounds on integration
+		a = 1
+		# b = pstar = 4
+		pstar = 4
 
 		# equilibrium quantity
 		# qstar = q(pstar)
 
-		# CS1: p=4
-		# ========
+		# use transformation formula to map into [-1,1]
+		pts  = ba2(a,pstar).*gl[1] .+ ab2(a,pstar)	# integration points
+		vals = q(pts)  # function values at those points
+ 		Integ = ba2(a,pstar) * (gl[2]' * vals ) 
+		Integ -= 2
+		Integ = Integ[1]
 
-		pstar=4.0
-		pqstar = pstar * q(pstar)
+		# plot
 		figure()
-		plot(gl[1],q(ba2(pstar).*gl[1] .+ ab(pstar)),"o")
-		title("Gauss Legendre")
+		plot(pts,vals,"o-")
+		title("Gauss Laguerre")
 
-		CS1 = ba2(pstar) * (gl[2]' * q(ba2(pstar).*gl[1] .+ ab(pstar)))  - pqstar
-
-		# CS2: p=1
-		# ========
-		pstar=1.0
-		pqstar = pstar * q(pstar)
-		CS2 = ba2(pstar) * (gl[2]' * q(ba2(pstar).*gl[1] .+ ab(pstar)))  - pqstar
-
-		d = CS1-CS2
-
-		println("estimated change in CS using $n gauss legendre nodes is $(round(d[1],5))")
-		println("i.e. an error of $(round(abs(100*(2-d[1]))/2,5)) percent")
+		println("estimated change in CS using $n gauss legendre nodes is $(Integ)")
+		println("i.e. an error of $(round(abs(100*(2-Integ))/2,5)) percent")
 		println("")
 	end
 
@@ -68,34 +74,29 @@ module HW_int
 
 	function question_1c(n)
 
-		# CS1: p=4
-		# ========
+		# function to integrate:
+		# CS_4 = \int_0^4 q(p) dp - 4
+		# CS_1 = \int_0^1 q(p) dp - 2
+		# CS_4 - CS_1 = \int_0^4 q(p) dp - 4 - \int_0^1 q(p) dp + 2 
+		#             = \int_1^4 q(p) dp - 2 
 
-		pstar=4.0
-		pqstar = pstar * q(pstar)
 
-		pts = rand(n)*pstar
+		# get n random numbers from [1,4]
+		pts = rand(n)*3 + 1	
+		vals = q(pts)
+
+		# integrate: Monte carlo is defined for the "hypercube" [0,1]
+		# we need to adjust the "volume" of this cube to be 3
+		Integ = 3*mean(vals) - 2
+		
+		# plot
 		figure()
-		plot(pts,q(pts),"o")
+		plot(pts,vals,"o")
+		axhline(mean(vals),color="red")
 		title("Monte Carlo")
-		Integ = mean(q(pts)) 
 
-		CS1 = Integ - pqstar
-
-		# CS2: p=1
-		# ========
-		pstar=1.0
-		pqstar = pstar * q(pstar)
-
-		pts = rand(n)*pstar
-		Integ = mean(q(pts)) 
-
-		CS2 = Integ - pqstar
-
-		d = CS1-CS2
-
-		println("estimated change in CS using $n monte carlo nodes is $(round(d[1],5))")
-		println("i.e. an error of $(round(abs(100*(2-d[1]))/2,5)) percent")
+		println("estimated change in CS using $n monte carlo nodes is $Integ)")
+		println("i.e. an error of $(round(abs(100*(2-Integ))/2,5)) percent")
 		println("")
 
 	end
@@ -108,37 +109,26 @@ module HW_int
 		pstar=4.0
 		pqstar = pstar * q(pstar)
 
-		s = SobolSeq(1,[0],[pstar])  # 1-dimensional sobol sequence in [0,pstar]
+		s = SobolSeq(1,[1],[pstar])  # 1-dimensional sobol sequence in [1,pstar]
 		pts = zeros(n)
 		for i in 1:n
 			pts[i] = next(s)[1]
 		end
+
+		vals = q(pts)
+
+		# integrate: Monte carlo is defined for the hypercube [0,1]
+		# we need to extend the length of that interval to be 3
+		Integ = 3*mean(vals) - 2
+		
+		# plot
 		figure()
-		plot(pts,q(pts),"o")
+		plot(pts,vals,"o")
+		axhline(mean(vals),color="red")
 		title("Quasi Monte Carlo")
-		Integ = mean(q(pts)) 
 
-		CS1 = Integ - pqstar
-
-		# CS2: p=1
-		# ========
-		pstar=1.0
-		pqstar = pstar * q(pstar)
-
-		s = SobolSeq(1,[0],[pstar])  # 1-dimensional sobol sequence
-		pts = zeros(n)
-		for i in 1:n
-			pts[i] = next(s)[1]
-		end
-		pts = rand(n)*pstar
-		Integ = mean(q(pts)) 
-
-		CS2 = Integ - pqstar
-
-		d = CS1-CS2
-
-		println("estimated change in CS using $n quasi-monte carlo nodes is $(round(d[1],5))")
-		println("i.e. an error of $(round(abs(100*(2-d[1]))/2,5)) percent")
+		println("estimated change in CS using $n Quasi monte carlo nodes is $Integ)")
+		println("i.e. an error of $(round(abs(100*(2-Integ))/2,5)) percent")
 		println("")
 
 	end
@@ -147,28 +137,33 @@ module HW_int
 
 	function question_2a(n)
 
-		# expected price in equilibrium is such that expected demand equals supply.
-		# pfun(p,theta1,theta2) = 
-		# \int \int (theta1 1/p + theta2 * 1/sqrt(p) ) w(theta1,theta2) dthetea1 dtheta2 - 2
-		# find root of pfun
-
 		gh = gausshermite(n)
 
 		Sigma = hcat([0.02, 0.01],[0.01,0.01])
-		Omega = chol(Sigma,Val{:L})
+		Omega = chol(Sigma,Val{:U})
 
 		mu = [0.0;0.0]
 
 		# kronecker product of grids and weights
 		gr = hcat(kron(ones(n),gh[1]),kron(gh[1],ones(n)))
-		wt = kron(gh[2],gh[2]) / sqrt(pi)	# watch out for the pi!
+		wt = kron(gh[2],gh[2]) / pi	# watch out for the pi!
 
 		# make adjustment for correlation in shocks
-		grids = gr * Omega + zeros(n*n,2)   # zeros here would be a matrix with mu
-		
-		EP = fzero(x->intfun(x,grids,wt),0.01,10)
+		grids = Omega * gr'	 + zeros(2,n*n)   # zeros here would be a matrix with mu
 
-		VAR = fzero(x-> intfun(x^2,grids,wt) - EP^2,0.01,10) 
+		# find eqm price at each combination of theta1,theta2
+		pstar = zeros(n*n)
+		for i in 1:length(pstar)
+			pstar[i] = fzero(x->dd(x,grids[1,i],grids[2,i]),0.001,15)
+		end
+
+		# plot
+		figure()
+		plot(grids[1,:],grids[2,:],"o")
+		title("Question 2a: Gauss hermite theta grid")
+		
+		EP = dot(wt,pstar)
+		VAR = dot(wt, (pstar .- EP).^2 )
 
 		return Dict("E[p]"=>EP, "Var[p]"=>VAR)
 
@@ -176,32 +171,61 @@ module HW_int
 
 	function question_2b(n)
 
-		# expected price in equilibrium is such that expected demand equals supply.
-		# pfun(p,theta1,theta2) = 
-		# \int \int (theta1 1/p + theta2 * 1/sqrt(p) ) w(theta1,theta2) dthetea1 dtheta2 - 2
-		# find root of pfun
-
-		ln1 = LogNormal(0.0,0.02)
-		ln2 = LogNormal(0.0,0.01)
-		pt1 = rand(ln1,n)
-		pt2 = rand(ln2,n)
+		# for fairness, let's also create n^2 points as in 2a
+		n = n^2
 
 		Sigma = hcat([0.02, 0.01],[0.01,0.01])
-		Omega = chol(Sigma,Val{:L})
+		M = MvNormal(Sigma)	# create mean zero joint normal distribution
+		pts = rand(M,n)	# just draw from it randomly
 
-		mu = [0.0;0.0]
-
-		# kronecker product of grids 
-		gr = hcat(kron(ones(n),pt1),kron(pt2,ones(n)))
-		wt = ones(n^2) ./ n^2
-
-		# make adjustment for correlation in shocks
-		grids = gr * Omega + zeros(n*n,2)   # zeros here would be a matrix with mu
+		# find eqm price at each combination of theta1,theta2
+		pstar = zeros(n)
+		for i in 1:length(pstar)
+			pstar[i] = fzero(x->dd(x,pts[1,i],pts[2,i]),0.01,10)
+		end
 		
-		EP = fzero(x->mean(dd(x,grids,wt)),0.01,10)
+		# plot
+		figure()
+		plot(pts[1,:],pts[2,:],"o")
+		title("Question 2b: Monte Carlo theta grid")
 
-		VAR = fzero(x-> mean(dd(x^2,grids,wt)) - EP^2,0.01,10) 
+		EP = mean(pstar)
 
+		VAR = mean( (pstar .- EP).^2 )
+		return Dict("E[p]"=>EP, "Var[p]"=>VAR)
+
+	end
+
+	function question_2bonus(n)
+
+		# for fairness, let's also create n^2 points as in 2a
+		n = n^2
+
+		s = SobolSeq(2,[1,1],[4,4])  # 2-dimensional sobol sequence 
+		pts = hcat([next(s) for i=1:n])
+		println("here's the sobol sequence")
+		println(pts)
+
+		# find eqm price at each combination of theta1,theta2
+		pstar = Float64[]
+		for i in 1:n
+			tmp = fzero_wrap(x->dd(x,pts[i][1],pts[i][2]),0.0001,20)
+			if isnan(tmp)
+				# nothing
+			else
+				push!(pstar,tmp)
+			end
+		end
+		println("it's very hard to find the eqm price for those values")
+		
+		# plot
+		figure()
+		plot([pts[i][1] for i in 1:n],[pts[i][2] for i in 1:n],"o")
+		title("Question 2bonus: Quasi Monte Carlo theta grid")
+
+		EP = mean(pstar)
+
+		VAR = mean( (pstar .- EP).^2 )
 		return Dict("E[p]"=>EP, "Var[p]"=>VAR)
 
 	end
@@ -219,6 +243,10 @@ module HW_int
 		println(q2)
 		q2b = question_2b(n)
 		println(q2b)
+		println("")
+		println("bonus question: Quasi monte carlo:")
+		q2bo = question_2bonus(n)
+		println(q2bo)
 		println("end of HW-integration")
 	end
 
